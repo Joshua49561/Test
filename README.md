@@ -1,10 +1,10 @@
 # Modelwerk – lokales KI-Studio
 
-Modelwerk ist eine deutschsprachige Website für deine lokalen KI-Modelle. Sie listet Modelle aus Ollama, LM Studio und einer weiteren OpenAI-kompatiblen Laufzeit in einer Ansicht. Du kannst mit Text-Chat-Modellen schreiben und weitere Modelle über Ollama herunterladen. Prompts und Chatverläufe werden nicht von Modelwerk gespeichert oder an GitHub gesendet.
+Modelwerk ist eine deutschsprachige Website für deine lokalen KI-Modelle. Sie listet Modelle aus Ollama, LM Studio und weiteren OpenAI-kompatiblen Laufzeiten in einer Ansicht. Du kannst mit Text-Chat-Modellen schreiben und Modelle über Ollama oder LM Studio herunterladen. Prompts und Chatverläufe werden nicht von Modelwerk gespeichert oder an GitHub gesendet.
 
 ## Auf deinem Rechner starten
 
-1. Installiere [Node.js 22 oder neuer](https://nodejs.org/) und [Ollama](https://ollama.com/download) **oder** [LM Studio](https://lmstudio.ai/). Starte Ollama (falls nötig `ollama serve`) oder aktiviere in LM Studio im Bereich **Developer** den lokalen Server.
+1. Installiere [Node.js 22 oder neuer](https://nodejs.org/) sowie eine lokale Laufzeit, zum Beispiel [Ollama](https://ollama.com/download) oder [LM Studio](https://lmstudio.ai/). Starte Ollama (falls nötig `ollama serve`), aktiviere in LM Studio unter **Developer** den lokalen Server oder starte deine andere Laufzeit.
 2. Lade das Projekt auf GitHub über **Code → Download ZIP** im Branch mit Modelwerk herunter und entpacke es. Alternativ kannst du das Repository klonen.
 3. **Windows:** Doppelklick auf `Modelwerk starten.cmd`. **macOS/Linux:** `sh ./modelwerk-starten.sh` im Projektordner ausführen. Plattformübergreifend geht auch `npm run open`. Es ist kein `npm install` nötig.
 4. Der Starter öffnet die lokale Seite unter `http://127.0.0.1:3210`. Unter **Meine Modelle** findest du die automatisch erkannten Modelle. Mit **Verbindung → Verbindung prüfen** kannst du nach einem Start oder Download neu suchen.
@@ -14,12 +14,18 @@ Modelwerk ist eine deutschsprachige Website für deine lokalen KI-Modelle. Sie l
 ## Modelle nutzen und installieren
 
 - **Chat:** Wähle ein Modell aus. Du kannst Antworten stoppen oder kopieren. Der Verlauf ist nur im aktuellen Tab; mit „Neuer Chat“ setzt du ihn zurück. Modelwerk bietet Text-Chat; Bild- oder Datei-Uploads sind nicht Teil des Chats.
-- **Modell-Bibliothek:** Unter **Installieren** bestätigst du einen Download in Ollama, mit Fortschrittsanzeige im Studio. Wenn Ollama nicht verbunden ist, kannst du den passenden `ollama pull …`-Befehl kopieren. Unter **Ollama-Modell hinzufügen** sind auch andere gültige Ollama-Namen wie `llama3.2:1b` möglich. Downloads brauchen Internet und ausreichend Speicherplatz; Modell-Lizenzen und Systemanforderungen unterscheiden sich.
-- **Modellfamilien:** Filtere in der Bibliothek nach GPT-OSS (20B, 120B) oder Gemma (Gemma, Gemma 2, Gemma 3, Gemma 3n, Gemma 4). Die angegebenen Größen sind ungefähre Downloadgrößen, nicht der RAM-/VRAM-Bedarf beim Ausführen. Für neue Modelle empfiehlt sich eine aktuelle Ollama-Version.
+- **Modell-Bibliothek:** Wähle unter **Installieren** zwischen **Ollama** und **LM Studio**. Direkte Downloads in LM Studio sind bei ausgewählten Karten hinterlegt (z. B. GPT-OSS, Gemma 3 und Gemma 4). Für andere Modelle nutze **Modell hinzufügen**: Ollama-Name, LM-Studio-Katalog-ID oder Hugging-Face-Modell-URL; bei Hugging Face kannst du optional eine Quantisierung wie `Q4_K_M` angeben. Downloads brauchen Internet und freien Speicherplatz. Die Größen auf den Karten gelten für Ollama und sind keine Angaben zum RAM-/VRAM-Bedarf.
+- **Modellfamilien:** Filtere in der Bibliothek nach GPT-OSS (20B, 120B) oder Gemma (Gemma, Gemma 2, Gemma 3, Gemma 3n, Gemma 4). Für neuere Modelle empfiehlt sich eine aktuelle Version deiner Laufzeit.
 - **Schnellsuche:** `Strg+K` beziehungsweise `⌘K` öffnet die Suche über Ansichten und Modelle.
-- **Weitere Modelle:** Für LM Studio lade das gewünschte Modell in LM Studio selbst. Für eigene Dateiformate wie GGUF importiere oder lade das Modell zuerst in einer kompatiblen Laufzeit. Eine Website kann weder beliebige Modelldateien auf deinem Rechner finden noch eigenständig Programme installieren. Nicht jedes installierte Modell ist ein Chat-Modell (z. B. Embedding-Modelle).
+- **LM Studio ohne Ollama:** Starte in LM Studio unter **Developer** den lokalen Server. Mit [REST API v1](https://lmstudio.ai/docs/developer/rest) (ab LM Studio 0.4) erkennt Modelwerk heruntergeladene Chatmodelle, lädt sie beim ersten Senden bei Bedarf in den Speicher und kann Modell-Downloads anstoßen. LM-Studio-Downloads laufen auch weiter, wenn du ihre Anzeige in Modelwerk beendest. Ältere Versionen bleiben über die kompatible Chat-API nutzbar; lade Modelle dann direkt in LM Studio herunter.
 
 ## Lokale Laufzeiten konfigurieren
+
+**Verbindung → Laufzeit hinzufügen** bietet Vorlagen für **llama.cpp, Jan, LocalAI, vLLM und GPT4All** sowie eine **eigene OpenAI-kompatible API**. Gib die lokale Basis-URL und, falls nötig, den Schlüssel der Laufzeit ein. Du kannst mehrere Laufzeiten gleichzeitig verbinden. Die Eingaben gelten bis zum Neustart von Modelwerk; der Schlüssel bleibt im Speicher des lokalen Servers und wird nicht an die Oberfläche zurückgegeben.
+
+Weitere Laufzeiten bieten in Modelwerk Erkennung und Textchat, keine einheitliche Download-Funktion. Lade oder importiere deine Modelle zuerst in der jeweiligen Laufzeit (z. B. eine GGUF-Datei in llama.cpp). Die kompatible API muss `/models` und `/chat/completions` unter ihrer Basis-URL bereitstellen.
+
+Optional können die automatischen Verbindungen weiterhin per Umgebungsvariablen gesetzt werden:
 
 | Laufzeit | Vorgabe bzw. Konfiguration |
 | --- | --- |

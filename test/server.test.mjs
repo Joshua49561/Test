@@ -110,7 +110,9 @@ test('liefert die lokale Oberfläche und nur öffentliche Dateien', async () => 
 test('findet Modelle aller drei Laufzeiten und blendet Ollama-Cloudvarianten aus', async () => {
   const response = await fetch(`${origin}/api/models`);
   assert.equal(response.headers.get('Cache-Control'), 'no-store');
-  assert.deepEqual(await response.json(), {
+  const payload = await response.json();
+  assert.equal(payload.providers.find(provider => provider.id === 'lmstudio').download, false);
+  assert.deepEqual({ ...payload, providers: payload.providers.map(({ id, status, count }) => ({ id, status, count })) }, {
     mode: 'local', providers: [
       { id: 'ollama', status: 'connected', count: 2 },
       { id: 'lmstudio', status: 'connected', count: 1 },
@@ -169,6 +171,7 @@ test('erlaubt kein gleichzeitiges zweites Pull und bricht die lokale Anfrage bei
   const reader = res.body.getReader();
   assert.ok((await reader.read()).value.length);
   assert.equal((await post('pull', { model: installable })).status, 409);
+  assert.equal((await post('connection', { id: 'ollama', reset: true })).status, 409);
   controller.abort();
   await pullClosed;
   await reader.cancel().catch(() => {});
@@ -202,4 +205,5 @@ test('Web-Vorschau zeigt keine Modelle und leitet keine API-Aktionen weiter', as
   assert.deepEqual(state, { mode: 'preview', providers: [], models: [] });
   assert.equal((await post('pull', { model: installable }, { base: preview })).status, 403);
   assert.equal((await post('chat', { provider: 'ollama', model: knownLocal, messages }, { base: preview })).status, 403);
+  assert.equal((await post('connection', { id: 'jan', base: 'http://127.0.0.1:1337/v1' }, { base: preview })).status, 403);
 });

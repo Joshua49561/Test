@@ -5,7 +5,9 @@ import { extname, resolve, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
-import { isCloudOllamaName, validOllamaName } from './public/model-name.js';
+import { setTimeout as delay } from 'node:timers/promises';
+import { isCloudOllamaName, validOllamaName, isHuggingFaceRepo, validLMStudioModel, validLMStudioQuantization } from './public/model-name.js';
+import { defaultRuntimes, runtimes } from './public/runtimes.js';
 
 const publicDir = fileURLToPath(new URL('./public', import.meta.url));
 const loopback = new Set(['127.0.0.1', 'localhost', '[::1]']);
@@ -31,19 +33,54 @@ class HttpError extends Error {
 
 function localBase(raw, key) {
   let url;
-  try { url = new URL(raw); } catch { /* reported below */ }
+  try { if (typeof raw === 'string' && raw.length <= 512) url = new URL(raw); } catch { /* reported below */ }
   if (!url || !['http:', 'https:'].includes(url.protocol) || !loopback.has(url.hostname) || url.username || url.password || url.hash || url.search) {
     throw new Error(`${key} muss eine lokale HTTP(S)-Adresse sein (localhost, 127.0.0.1 oder [::1]).`);
   }
   return url.href.replace(/\/+$/, '');
 }
 
+function runtimeConfig(id, rawBase, key, field = 'Adresse') {
+  const type = id === 'ollama' || id === 'lmstudio' ? id : 'openai';
+  let base = rawBase === null ? null : localBase(rawBase, field);
+  if (type === 'lmstudio') {
+    const root = base.replace(/(?:\/api)?\/v1$/, '');
+    return { id, type, base: `${root}/v1`, nativeBase: `${root}/api/v1`, key };
+  }
+  if (type === 'openai' && base && new URL(base).pathname === '/') base += '/v1';
+  return { id, type, base, key };
+}
+
 function providersFrom(env) {
-  return [
-    { id: 'ollama', base: localBase(env.MODELWERK_OLLAMA_URL || 'http://127.0.0.1:11434', 'MODELWERK_OLLAMA_URL'), type: 'ollama' },
-    { id: 'lmstudio', base: localBase(env.MODELWERK_LMSTUDIO_URL || 'http://127.0.0.1:1234/v1', 'MODELWERK_LMSTUDIO_URL'), type: 'openai', key: env.MODELWERK_LMSTUDIO_KEY },
-    { id: 'compatible', base: env.MODELWERK_OPENAI_URL ? localBase(env.MODELWERK_OPENAI_URL, 'MODELWERK_OPENAI_URL') : null, type: 'openai', key: env.MODELWERK_OPENAI_KEY },
-  ];
+  const [ollama, lmstudio] = defaultRuntimes;
+  return new Map([
+    ['ollama', runtimeConfig('ollama', env.MODELWERK_OLLAMA_URL || ollama.base, undefined, 'MODELWERK_OLLAMA_URL')],
+    ['lmstudio', runtimeConfig('lmstudio', env.MODELWERK_LMSTUDIO_URL || lmstudio.base, env.MODELWERK_LMSTUDIO_KEY, 'MODELWERK_LMSTUDIO_URL')],
+    ['compatible', runtimeConfig('compatible', env.MODELWERK_OPENAI_URL || null, env.MODELWERK_OPENAI_KEY, 'MODELWERK_OPENAI_URL')],
+  ]);
+}
+
+function configureRuntime(providers, defaults, body, port) {
+  const { id, base, apiKey, reset } = body ?? {};
+  if (!runtimes.some(runtime => runtime.id === id)) throw new HttpError(400, 'Unbekannte Laufzeit.');
+  if (reset === true) {
+    if (defaults.has(id)) providers.set(id, defaults.get(id));
+    else providers.delete(id);
+    return;
+  }
+  if (apiKey !== undefined && (typeof apiKey !== 'string' || apiKey.length > 4096 || !/^[\x21-\x7e]*$/.test(apiKey))) {
+    throw new HttpError(400, 'Der API-Schlüssel ist ungültig.');
+  }
+  let config;
+  try {
+    if (typeof base !== 'string' || !base.trim()) throw new Error('Bitte gib die lokale API-Adresse ein.');
+    config = runtimeConfig(id, base.trim(), apiKey);
+    const url = new URL(config.base);
+    if (Number(url.port || (url.protocol === 'https:' ? 443 : 80)) === port) throw new Error('Wähle den Port der Laufzeit, nicht den von Modelwerk.');
+  } catch (error) { throw new HttpError(400, error.message); }
+  const previous = providers.get(id);
+  if (apiKey === undefined && config.base === previous?.base) config.key = previous.key;
+  providers.set(id, config);
 }
 
 function json(response, status, data) {
@@ -83,8 +120,8 @@ async function bodyJson(req) {
   catch { throw new HttpError(400, 'Ungültige JSON-Anfrage.'); }
 }
 
-function upstream(provider, path, signal, data) {
-  return fetch(`${provider.base}${path}`, {
+function upstream(provider, path, signal, data, base = provider.base) {
+  return fetch(`${base}${path}`, {
     signal, redirect: 'error', method: data === undefined ? 'GET' : 'POST',
     headers: {
       ...(data === undefined ? {} : { 'Content-Type': 'application/json' }),
@@ -107,36 +144,61 @@ async function upstreamJson(response, limit) {
   return JSON.parse(Buffer.concat(chunks).toString('utf8'));
 }
 
-async function discover(provider) {
-  if (!provider.base) return { id: provider.id, status: 'not-configured', models: [] };
+const validModelId = id => typeof id === 'string' && Boolean(id.trim()) && id.length <= 512;
+const modelSize = bytes => Number.isFinite(bytes) && bytes > 0 ? bytes : null;
+
+async function listModels(provider, signal, native = false) {
+  const isOllama = provider.type === 'ollama';
   try {
-    const isOllama = provider.type === 'ollama';
-    const response = await upstream(provider, isOllama ? '/api/tags' : '/models', AbortSignal.timeout(2600));
-    if (!response.ok) {
-      await response.body?.cancel();
-      return { id: provider.id, status: response.status === 401 || response.status === 403 ? 'auth-required' : 'unreachable', models: [] };
+    const result = await upstream(provider, isOllama ? '/api/tags' : '/models', signal, undefined, native ? provider.nativeBase : provider.base);
+    if (!result.ok) {
+      await result.body?.cancel();
+      return { status: result.status === 401 || result.status === 403 ? 'auth-required' : 'unreachable', entries: [] };
     }
-    const payload = await upstreamJson(response, 4 * 1024 * 1024);
-    const entries = isOllama ? payload?.models : payload?.data;
-    if (!Array.isArray(entries)) return { id: provider.id, status: 'unreachable', models: [] };
+    const payload = await upstreamJson(result, 4 * 1024 * 1024);
+    const entries = isOllama || native ? payload?.models : payload?.data;
+    if (Array.isArray(entries)) return { status: 'connected', entries };
+  } catch { /* Fall back to the compatible API when the native API is unavailable. */ }
+  return { status: 'unreachable', entries: [] };
+}
+
+const nativeChatModel = entry => entry?.type === 'llm' && validModelId(entry.key);
+const loadedInstance = model => Array.isArray(model.loaded_instances)
+  ? model.loaded_instances.find(instance => validModelId(instance?.id))?.id : undefined;
+
+async function discover(provider) {
+  if (!provider.base) return { status: 'not-configured', models: [], download: false };
+  const isOllama = provider.type === 'ollama';
+  const native = provider.type === 'lmstudio' ? await listModels(provider, AbortSignal.timeout(2200), true) : null;
+  if (native?.status === 'connected') {
     const models = new Map();
-    for (const item of entries) {
-      const id = isOllama ? item?.name || item?.model : item?.id;
-      if (typeof id !== 'string' || !id.trim() || id.length > 512) continue;
-      if (isOllama && (item.remote_model || item.remote_host || isCloudOllamaName(id))) continue;
-      models.set(id, {
-        id, provider: provider.id,
-        ...(isOllama ? {
-          size: Number.isFinite(item.size) && item.size > 0 ? item.size : null,
-          family: safeString(item.details?.family),
-          parameters: safeString(item.details?.parameter_size),
-        } : {}),
+    for (const item of native.entries.filter(nativeChatModel)) {
+      models.set(item.key, {
+        id: item.key, provider: provider.id, name: safeString(item.display_name),
+        size: modelSize(item.size_bytes), parameters: safeString(item.params_string),
+        quantization: safeString(item.quantization?.name), loaded: Boolean(loadedInstance(item)),
       });
     }
-    return { id: provider.id, status: 'connected', models: [...models.values()] };
-  } catch {
-    return { id: provider.id, status: 'unreachable', models: [] };
+    return { status: 'connected', models: [...models.values()], download: true };
   }
+  const { status, entries } = await listModels(provider, AbortSignal.timeout(2600));
+  const models = new Map();
+  for (const item of entries) {
+    const id = isOllama ? item?.name || item?.model : item?.id;
+    if (!validModelId(id)) continue;
+    if (isOllama && (item.remote_model || item.remote_host || isCloudOllamaName(id))) continue;
+    models.set(id, {
+      id, provider: provider.id,
+      ...(isOllama ? {
+        size: modelSize(item.size), family: safeString(item.details?.family),
+        parameters: safeString(item.details?.parameter_size),
+      } : {}),
+    });
+  }
+  return {
+    status: status === 'unreachable' && native?.status === 'auth-required' ? 'auth-required' : status,
+    models: [...models.values()], download: isOllama && status === 'connected',
+  };
 }
 
 async function* lines(body) {
@@ -179,7 +241,18 @@ async function writeEvent(response, item, signal) {
   if (!response.write(`${JSON.stringify(item)}\n`)) await once(response, 'drain', { signal });
 }
 
-async function streamResponse(response, provider, path, data, timeout, run) {
+async function upstreamProblem(result, fallback) {
+  let problem;
+  try {
+    if (result.headers.get('content-type')?.includes('json')) {
+      const payload = await upstreamJson(result, 64_000);
+      problem = safeString(payload?.error?.message ?? payload?.error, 400);
+    } else await result.body?.cancel();
+  } catch { /* use the generic upstream error */ }
+  return new HttpError(502, problem || fallback || `Die Laufzeit hat die Anfrage abgelehnt (HTTP ${result.status}).`);
+}
+
+async function streamResponse(response, timeout, request, run) {
   if (response.destroyed) return;
   const client = new AbortController();
   const deadline = AbortSignal.timeout(timeout);
@@ -187,22 +260,11 @@ async function streamResponse(response, provider, path, data, timeout, run) {
   response.once('close', () => client.abort());
   const emit = item => writeEvent(response, item, signal);
   try {
-    const result = await upstream(provider, path, signal, data);
-    if (!result.ok) {
-      let problem = '';
-      try {
-        if (result.headers.get('content-type')?.includes('json')) {
-          const payload = await upstreamJson(result, 64_000);
-          problem = safeString(payload?.error?.message ?? payload?.error, 400);
-        } else {
-          await result.body?.cancel();
-        }
-      } catch { /* use the generic upstream error */ }
-      throw new HttpError(502, problem || `Die Laufzeit hat die Anfrage abgelehnt (HTTP ${result.status}).`);
-    }
+    const result = await request(signal);
+    if (!result.ok) throw await upstreamProblem(result);
     response.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-store, no-transform', 'X-Accel-Buffering': 'no' });
     response.flushHeaders();
-    await run(result, emit);
+    await run(result, emit, signal);
     await emit({ done: true });
   } catch (error) {
     if (client.signal.aborted) return;
@@ -224,10 +286,27 @@ async function emitChatText(emit, text, reasoning) {
   if (item.text || item.reasoning) await emit(item);
 }
 
+async function prepareLMStudioModel(provider, model, signal) {
+  const listSignal = AbortSignal.any([signal, AbortSignal.timeout(2600)]);
+  const { entries } = await listModels(provider, listSignal, true);
+  const entry = entries.find(item => nativeChatModel(item) && item.key === model);
+  if (!entry) return model; // The OpenAI-compatible endpoint also supports older versions of LM Studio.
+  const loaded = loadedInstance(entry);
+  if (loaded) return loaded;
+  const result = await upstream(provider, '/models/load', signal, { model }, provider.nativeBase);
+  if (!result.ok) throw await upstreamProblem(result, 'LM Studio konnte das Modell nicht laden.');
+  const payload = await upstreamJson(result, 64_000);
+  if (payload?.status !== 'loaded' || !validModelId(payload.instance_id)) throw new HttpError(502, 'LM Studio hat keine geladene Modellinstanz zurückgegeben.');
+  return payload.instance_id;
+}
+
 async function chat(response, provider, model, messages) {
   const isOllama = provider.type === 'ollama';
-  const params = { model, messages, stream: true };
-  await streamResponse(response, provider, isOllama ? '/api/chat' : '/chat/completions', params, 15 * 60_000, async (result, emit) => {
+  const request = async signal => {
+    const id = provider.type === 'lmstudio' ? await prepareLMStudioModel(provider, model, signal) : model;
+    return upstream(provider, isOllama ? '/api/chat' : '/chat/completions', signal, { model: id, messages, stream: true });
+  };
+  await streamResponse(response, 15 * 60_000, request, async (result, emit) => {
     if (!result.body) throw new Error('Keine Antwort der Laufzeit.');
     let complete = false;
     if (isOllama) {
@@ -258,7 +337,8 @@ async function chat(response, provider, model, messages) {
 }
 
 async function pull(response, provider, model) {
-  await streamResponse(response, provider, '/api/pull', { model, stream: true }, 2 * 60 * 60_000, async (result, emit) => {
+  const request = signal => upstream(provider, '/api/pull', signal, { model, stream: true });
+  await streamResponse(response, 2 * 60 * 60_000, request, async (result, emit) => {
     if (!result.body) throw new Error('Keine Antwort der Laufzeit.');
     let complete = false;
     for await (const line of lines(result.body)) {
@@ -272,6 +352,34 @@ async function pull(response, provider, model) {
       if (status === 'success') { complete = true; break; }
     }
     if (!complete) throw new HttpError(502, 'Ollama hat den Download nicht abgeschlossen.');
+  });
+}
+
+async function pullLMStudio(response, provider, model, quantization) {
+  const request = signal => upstream(provider, '/models/download', AbortSignal.any([signal, AbortSignal.timeout(30_000)]), {
+    model, ...(quantization ? { quantization } : {}),
+  }, provider.nativeBase);
+  await streamResponse(response, 2 * 60 * 60_000, request, async (result, emit, signal) => {
+    let job = await upstreamJson(result, 64_000);
+    const jobId = job?.job_id;
+    while (!signal.aborted) {
+      if (job?.status === 'completed' || job?.status === 'already_downloaded') {
+        await emit({ status: 'success' });
+        return;
+      }
+      if (job?.status === 'failed') throw new HttpError(502, 'Der Download in LM Studio ist fehlgeschlagen. Prüfe ihn in LM Studio.');
+      if (!['downloading', 'paused'].includes(job?.status) || typeof jobId !== 'string' || !/^[a-z0-9_-]{1,160}$/i.test(jobId)) {
+        throw new HttpError(502, 'LM Studio hat keinen gültigen Download-Status zurückgegeben.');
+      }
+      const total = modelSize(job.total_size_bytes);
+      const completed = total && Number.isFinite(job.downloaded_bytes) ? Math.max(0, Math.min(total, job.downloaded_bytes)) : null;
+      await emit({ status: job.status === 'paused' ? 'paused' : 'downloading', total, completed });
+      await delay(1000, undefined, { signal });
+      const status = await upstream(provider, `/models/download/status/${jobId}`, AbortSignal.any([signal, AbortSignal.timeout(10_000)]), undefined, provider.nativeBase);
+      if (!status.ok) throw await upstreamProblem(status, 'Der Download-Status ist nicht erreichbar. Prüfe den Download in LM Studio.');
+      job = await upstreamJson(status, 64_000);
+    }
+    signal.throwIfAborted();
   });
 }
 
@@ -300,9 +408,10 @@ async function staticFile(req, response, path, mode, sourceRef) {
 
 export function createModelwerkServer({ mode = 'local', env = process.env } = {}) {
   if (mode !== 'local' && mode !== 'preview') throw new Error('Ungültiger Startmodus.');
-  const providers = mode === 'local' ? providersFrom(env) : [];
+  const defaults = mode === 'local' ? providersFrom(env) : new Map();
+  const providers = new Map(defaults);
   const sourceRef = mode === 'preview' && /^[a-z0-9][a-z0-9._/-]{0,139}$/i.test(env.MODELWERK_SOURCE_REF ?? '') ? env.MODELWERK_SOURCE_REF : 'main';
-  let activePull = false;
+  let activePull = null;
   const server = createServer(async (req, response) => {
     for (const [key, value] of Object.entries(headers)) response.setHeader(key, value);
     try {
@@ -319,17 +428,25 @@ export function createModelwerkServer({ mode = 'local', env = process.env } = {}
         }
         requireSameOrigin(req);
         if (path === '/api/models' && req.method === 'GET') {
-          const found = await Promise.all(providers.map(discover));
+          const found = await Promise.all([...providers.values()].map(async provider => ({
+            id: provider.id, base: provider.base, hasKey: Boolean(provider.key), ...await discover(provider),
+          })));
           return json(response, 200, {
-            mode, providers: found.map(({ id, status, models }) => ({ id, status, count: models.length })),
+            mode, providers: found.map(({ models, ...info }) => ({ ...info, count: models.length })),
             models: found.flatMap(entry => entry.models),
           });
         }
+        if (path === '/api/connection' && req.method === 'POST') {
+          const config = await bodyJson(req);
+          if (activePull && activePull === config?.id) throw new HttpError(409, 'Beende zuerst den aktiven Download oder seine Anzeige, bevor du diese Laufzeit änderst.');
+          configureRuntime(providers, defaults, config, server.address()?.port);
+          return json(response, 200, { ok: true });
+        }
         if (path === '/api/chat' && req.method === 'POST') {
           const body = await bodyJson(req);
-          const provider = providers.find(item => item.id === body?.provider && item.base);
+          const provider = providers.get(body?.provider);
           const { model, messages } = body ?? {};
-          if (!provider || typeof model !== 'string' || !model.trim() || model.length > 512 ||
+          if (!provider?.base || !validModelId(model) ||
               !Array.isArray(messages) || !messages.length || messages.length > 32 || messages.at(-1)?.role !== 'user' ||
               messages.some(item => !['user', 'assistant'].includes(item?.role) || typeof item.content !== 'string' || !item.content.trim() || item.content.length > 48_000)) {
             throw new HttpError(400, 'Bitte wähle eine lokale Laufzeit und sende eine gültige Nachricht.');
@@ -342,13 +459,23 @@ export function createModelwerkServer({ mode = 'local', env = process.env } = {}
           return await chat(response, provider, model, messages.map(({ role, content }) => ({ role, content })));
         }
         if (path === '/api/pull' && req.method === 'POST') {
-          const { model } = await bodyJson(req) ?? {};
-          if (!validOllamaName(model)) throw new HttpError(400, 'Ungültiger Ollama-Modellname.');
-          if (isCloudOllamaName(model)) throw new HttpError(400, 'Modelwerk installiert nur lokale Modelle, keine Cloud-Varianten.');
+          const { provider: id = 'ollama', model, quantization } = await bodyJson(req) ?? {};
+          const provider = providers.get(id);
+          if (!provider?.base || !['ollama', 'lmstudio'].includes(id)) throw new HttpError(400, 'Diese Laufzeit unterstützt keine Downloads in Modelwerk.');
+          if (id === 'ollama') {
+            if (!validOllamaName(model)) throw new HttpError(400, 'Ungültiger Ollama-Modellname.');
+            if (isCloudOllamaName(model)) throw new HttpError(400, 'Modelwerk installiert nur lokale Modelle, keine Cloud-Varianten.');
+          } else {
+            if (!validLMStudioModel(model)) throw new HttpError(400, 'Gib eine LM-Studio-Katalog-ID oder eine Hugging-Face-Modell-URL ein.');
+            if (quantization !== undefined && (!isHuggingFaceRepo(model) || !validLMStudioQuantization(quantization))) {
+              throw new HttpError(400, 'Eine Quantisierung kann nur bei einer Hugging-Face-Modell-URL angegeben werden, z. B. Q4_K_M.');
+            }
+          }
           if (activePull) throw new HttpError(409, 'Ein Download läuft bereits.');
-          activePull = true;
-          try { return await pull(response, providers[0], model); }
-          finally { activePull = false; }
+          activePull = id;
+          try {
+            return id === 'ollama' ? await pull(response, provider, model) : await pullLMStudio(response, provider, model, quantization);
+          } finally { activePull = null; }
         }
         throw new HttpError(404, 'Dieser API-Endpunkt ist nicht verfügbar.');
       }

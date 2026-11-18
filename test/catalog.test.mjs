@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { catalog, categories, families, featuredCatalog } from '../public/catalog.js';
-import { isCloudOllamaName, validOllamaName } from '../public/model-name.js';
+import { isCloudOllamaName, validOllamaName, validLMStudioModel } from '../public/model-name.js';
 
 const variants = family => catalog.filter(entry => entry.family === family).map(entry => entry.id).sort();
 
@@ -27,4 +27,14 @@ test('Katalogmodelle und Aliase sind eindeutig, installierbar und korrekt katego
       ids.add(id);
     }
   }
+});
+
+
+test('direkt verknüpfte LM-Studio-Karten besitzen gültige und eindeutige Katalog-IDs', () => {
+  const ids = catalog.filter(entry => entry.lmstudio).map(entry => entry.lmstudio);
+  assert.ok(ids.includes('openai/gpt-oss-20b'));
+  assert.ok(ids.includes('openai/gpt-oss-120b'));
+  assert.ok(ids.includes('google/gemma-4-e2b'));
+  assert.ok(ids.every(validLMStudioModel));
+  assert.equal(new Set(ids).size, ids.length);
 });

@@ -230,7 +230,7 @@ kbd { display: inline-flex; align-items: center; justify-content: center; flex: 
 .runtime-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .provider-card { display: flex; flex-direction: column; min-width: 0; padding: 16px; }
 .provider-card h2 { margin-top: 10px; font: 650 20px/1.2 var(--display); letter-spacing: -.4px; }
-.provider-host { color: var(--subtle); font: 10px/1.55 var(--mono); }
+.provider-host { overflow-wrap: anywhere; color: var(--subtle); font: 10px/1.55 var(--mono); }
 .provider-description { margin: 7px 0 13px; color: var(--muted); font-size: 12px; }
 .provider-top, .provider-bottom { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 7px; }
 .provider-bottom { margin-top: auto; }
@@ -302,6 +302,12 @@ dialog::backdrop { background: #080711b9; backdrop-filter: blur(3px); }
 .modal-content ol { padding-left: 20px; }
 .modal-content li + li { margin-top: 6px; }
 .modal-content strong, .modal-content label { color: var(--text); }
+.installer-switch { display: flex; flex-wrap: wrap; gap: 6px; }
+.installer-switch .filter-button { display: inline-flex; align-items: center; gap: 6px; }
+.modal-content code { overflow-wrap: anywhere; }
+.field-hint { color: var(--subtle); font-size: 11px; }
+.checkbox-field { display: flex; align-items: center; gap: 7px; font-size: 12px; }
+.checkbox-field input { accent-color: var(--accent); }
 .form-field { display: grid; gap: 5px; }
 .progress-row { display: flex; justify-content: space-between; gap: 8px; color: var(--text); font-size: 12px; }
 .progress-panel { padding: 11px; border: 1px solid #3e3451; border-radius: 8px; background: #231d2f; }
