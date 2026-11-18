@@ -1,4 +1,4 @@
-import { catalog, categories, runtimes } from './catalog.js';
+import { catalog, categories, families, featuredCatalog, runtimes } from './catalog.js';
 import { icon, modelIcon } from './icons.js';
 import { isCloudOllamaName, validOllamaName } from './model-name.js';
 
@@ -22,13 +22,14 @@ const pages = {
 const getPage = () => Object.hasOwn(pages, location.hash.slice(1)) ? location.hash.slice(1) : 'uebersicht';
 const state = {
   page: getPage(), models: [], providers: [], loading: local, checked: false,
-  libraryQuery: '', libraryFilter: 'Alle', inventoryQuery: '',
+  libraryQuery: '', libraryFilter: 'Alle', libraryFamily: '', inventoryQuery: '',
   selection: '', draft: '', chats: new Map(), generating: null,
   pull: null, dialog: null, paletteIndex: 0,
 };
 const esc = value => String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[char]);
 const norm = value => String(value ?? '').normalize('NFD').replace(/\p{Diacritic}/gu, '').toLowerCase();
 const matches = (haystack, query) => norm(query).trim().split(/\s+/).every(term => norm(haystack).includes(term));
+const catalogKeywords = item => `${item.id} ${item.vendor} ${item.tags.join(' ')} ${families.find(family => family.id === item.family)?.label ?? ''}`;
 const installedKey = model => `${model.provider}/${model.id}`;
 const providerName = id => runtimes.find(item => item.id === id)?.name ?? id;
 const isUp = id => state.providers.some(runtime => runtime.id === id && runtime.status === 'connected');
@@ -129,7 +130,7 @@ function renderOverview() {
   </section>
   <section class="section" aria-labelledby="overview-library">
     <header class="section-heading"><div><h2 id="overview-library">Modell-Bibliothek</h2><p>Entdecke beliebte KI-Modelle für deinen Rechner.</p></div><a class="text-link" href="#bibliothek">Alle Modelle ${icon('arrowRight', 16)}</a></header>
-    ${catalogCards(catalog.slice(0, 3), true)}
+    ${catalogCards(featuredCatalog, true)}
   </section>`;
 }
 function renderInventory() {
@@ -144,14 +145,26 @@ function inventoryResults() {
 }
 function renderLibrary() {
   return `${heading('Entdecken', 'Modell-Bibliothek', 'Wähle ein KI-Modell und installiere es in deiner lokalen Ollama-Laufzeit.', button('Ollama-Modell hinzufügen', { style: 'accent', glyph: 'plus', action: 'custom' }))}
-    <div class="library-tools"><div class="filter-list" role="group" aria-label="Nach Modelltyp filtern">${categoryButtons()}</div>${searchField('library-query', state.libraryQuery, 'Modelle suchen')}</div>
+    <div class="library-tools">
+      <div class="filter-list" role="group" aria-label="Nach Modelltyp filtern">${categoryButtons()}</div>
+      <div class="library-search">${familySelect()}${searchField('library-query', state.libraryQuery, 'Modelle suchen')}</div>
+    </div>
     <div id="library-results">${libraryResults()}</div>`;
 }
 function categoryButtons() {
   return categories.map(category => `<button class="filter-button" data-action="filter" data-category="${esc(category)}" aria-pressed="${state.libraryFilter === category}" type="button">${esc(category)}</button>`).join('');
 }
+function familySelect() {
+  const options = [{ id: '', label: 'Alle Familien' }, ...families];
+  return `<label class="sr-only" for="library-family">Modellfamilie</label><select id="library-family" class="field family-select">
+    ${options.map(family => `<option value="${esc(family.id)}" ${state.libraryFamily === family.id ? 'selected' : ''}>${esc(family.label)}</option>`).join('')}
+  </select>`;
+}
 function libraryResults() {
-  const entries = catalog.filter(item => (state.libraryFilter === 'Alle' || item.tags.includes(state.libraryFilter)) && matches(`${item.name} ${item.id} ${item.vendor} ${item.tags.join(' ')}`, state.libraryQuery));
+  const entries = catalog.filter(item =>
+    (!state.libraryFamily || item.family === state.libraryFamily) &&
+    (state.libraryFilter === 'Alle' || item.tags.includes(state.libraryFilter)) &&
+    matches(`${item.name} ${catalogKeywords(item)}`, state.libraryQuery));
   return `<p class="results-caption" role="status">${entries.length} ${entries.length === 1 ? 'Modell' : 'Modelle'}</p>${catalogCards(entries)}`;
 }
 function refreshLibrary() {
@@ -544,7 +557,7 @@ function refreshPalette(reset = false) {
   const query = $('#palette-query', palette).value.trim();
   const views = Object.entries(pages).map(([id, view]) => ({ id, type: 'Seite', ...view, keywords: id }));
   const installed = state.models.map(model => ({ id: installedKey(model), type: 'Lokal', title: model.id, icon: 'cpu', keywords: providerName(model.provider) }));
-  const library = catalog.map(item => ({ id: item.id, type: 'Bibliothek', title: item.name, icon: 'download', keywords: `${item.id} ${item.tags.join(' ')}` }));
+  const library = catalog.map(item => ({ id: item.id, type: 'Bibliothek', title: item.name, icon: 'download', keywords: catalogKeywords(item) }));
   paletteEntries = [...views, ...installed, ...library].filter(entry => matches(`${entry.title} ${entry.keywords}`, query)).slice(0, 12);
   state.paletteIndex = reset ? 0 : Math.min(state.paletteIndex, Math.max(0, paletteEntries.length - 1));
   $('#palette-results', palette).innerHTML = paletteEntries.length ? paletteEntries.map((entry, index) =>
@@ -647,7 +660,16 @@ document.addEventListener('click', event => {
     case 'palette-result': choosePalette(Number(index)); break;
     case 'refresh': void refreshModels({ announce: true }); break;
     case 'filter': state.libraryFilter = category; refreshLibrary(); break;
-    case 'reset-library': state.libraryFilter = 'Alle'; state.libraryQuery = ''; $('#library-query').value = ''; refreshLibrary(); $('#library-query').focus(); break;
+    case 'reset-library': {
+      state.libraryFilter = 'Alle';
+      state.libraryFamily = '';
+      state.libraryQuery = '';
+      $('#library-family').value = '';
+      $('#library-query').value = '';
+      refreshLibrary();
+      $('#library-query').focus();
+      break;
+    }
     case 'install': openInstall(catalog.find(item => item.id === id)); break;
     case 'custom': showModal({ type: 'custom' }); break;
     case 'provider': showModal({ type: 'provider', id }); break;
@@ -687,6 +709,7 @@ document.addEventListener('input', event => {
 });
 app.addEventListener('change', event => {
   if (event.target.id === 'chat-model') selectChat(event.target.value);
+  else if (event.target.id === 'library-family') { state.libraryFamily = event.target.value; refreshLibrary(); }
 });
 document.addEventListener('submit', event => {
   if (event.target.id === 'composer') { event.preventDefault(); void sendChat(); }

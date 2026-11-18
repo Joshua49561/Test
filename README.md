@@ -15,6 +15,7 @@ Modelwerk ist eine deutschsprachige Website für deine lokalen KI-Modelle. Sie l
 
 - **Chat:** Wähle ein Modell aus. Du kannst Antworten stoppen oder kopieren. Der Verlauf ist nur im aktuellen Tab; mit „Neuer Chat“ setzt du ihn zurück. Modelwerk bietet Text-Chat; Bild- oder Datei-Uploads sind nicht Teil des Chats.
 - **Modell-Bibliothek:** Unter **Installieren** bestätigst du einen Download in Ollama, mit Fortschrittsanzeige im Studio. Wenn Ollama nicht verbunden ist, kannst du den passenden `ollama pull …`-Befehl kopieren. Unter **Ollama-Modell hinzufügen** sind auch andere gültige Ollama-Namen wie `llama3.2:1b` möglich. Downloads brauchen Internet und ausreichend Speicherplatz; Modell-Lizenzen und Systemanforderungen unterscheiden sich.
+- **Modellfamilien:** Filtere in der Bibliothek nach GPT-OSS (20B, 120B) oder Gemma (Gemma, Gemma 2, Gemma 3, Gemma 3n, Gemma 4). Die angegebenen Größen sind ungefähre Downloadgrößen, nicht der RAM-/VRAM-Bedarf beim Ausführen. Für neue Modelle empfiehlt sich eine aktuelle Ollama-Version.
 - **Schnellsuche:** `Strg+K` beziehungsweise `⌘K` öffnet die Suche über Ansichten und Modelle.
 - **Weitere Modelle:** Für LM Studio lade das gewünschte Modell in LM Studio selbst. Für eigene Dateiformate wie GGUF importiere oder lade das Modell zuerst in einer kompatiblen Laufzeit. Eine Website kann weder beliebige Modelldateien auf deinem Rechner finden noch eigenständig Programme installieren. Nicht jedes installierte Modell ist ein Chat-Modell (z. B. Embedding-Modelle).
 

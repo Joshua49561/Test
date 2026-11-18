@@ -186,6 +186,7 @@ kbd { display: inline-flex; align-items: center; justify-content: center; flex: 
 .model-tile { display: grid; place-items: center; flex: none; width: 40px; height: 40px; border-radius: 9px; background: var(--tile-bg, #2a223b); color: var(--tile-color, var(--accent)); border: 1px solid var(--tile-border, #423456); }
 .brand-meta { --tile-bg: #24233b; --tile-color: #ac9cff; --tile-border: #39345b; }
 .brand-qwen { --tile-bg: #242039; --tile-color: #c3a3ff; --tile-border: #3e3359; }
+.brand-gpt-oss { --tile-bg: #1d302b; --tile-color: #8ce1ba; --tile-border: #304f43; }
 .brand-gemma { --tile-bg: #1d2938; --tile-color: #90bbff; --tile-border: #2f4159; }
 .brand-deepseek { --tile-bg: #1e2941; --tile-color: #93b0ff; --tile-border: #2e4064; }
 .brand-mistral { --tile-bg: #362822; --tile-color: #ffb88b; --tile-border: #533b30; }
@@ -202,6 +203,10 @@ kbd { display: inline-flex; align-items: center; justify-content: center; flex: 
 .model-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; color: #a29cb5; font: 550 10.5px/1.5 var(--mono); }
 .model-meta svg { width: 13px; height: 13px; }
 .library-tools { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.library-search { display: flex; align-items: stretch; gap: 8px; max-width: 100%; }
+.library-search .field-search { width: 220px; min-width: 0; }
+.family-select { flex: none; }
+.family-select:has(option:checked:not([value=""])) { color: #e0caff; border-color: #523e6e; }
 .filter-list { display: flex; flex-wrap: wrap; gap: 6px; }
 .filter-button { padding: 6px 10px; color: var(--muted); font-size: 12px; font-weight: 560; background: #181821; border: 1px solid var(--line); border-radius: 7px; }
 .filter-button:hover { color: var(--text); border-color: var(--line-strong); }
@@ -401,7 +406,8 @@ progress::-moz-progress-bar { background: #b999f9; border-radius: 8px; }
   .catalog-card { min-height: 0; }
   .page-heading { align-items: flex-start; flex-direction: column; gap: 11px; margin-bottom: 16px; }
   .page-heading p:not(.eyebrow) { font-size: 13px; }
-  .field-search { width: 100%; }
+  .field-search, .library-search { width: 100%; }
+  .library-search .field-search { flex: 1; width: auto; }
   .model-picker { max-width: 100%; }
   .chat-messages { height: clamp(280px, calc(100dvh - 355px), 550px); }
 }
