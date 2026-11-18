@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101016">
+  <meta name="modelwerk-mode" content="static">
+  <meta name="modelwerk-source-ref" content="main">
+  <meta name="description" content="Modelwerk ist dein Arbeitsbereich für lokale KI. Entdecke Modelle, installiere sie und chatte direkt auf deinem Rechner.">
+  <title>Modelwerk – Lokales KI-Studio</title>
+  <link rel="icon" href="./assets/mark.svg" type="image/svg+xml">
+  <link rel="preload" href="./assets/inter.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="./assets/space-grotesk.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="./styles.css">
+  <script type="module" src="./app.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#app">Zum Inhalt springen</a>
+  <button class="nav-scrim" type="button" data-action="menu-close" aria-label="Navigation schließen" hidden></button>
+  <aside class="sidebar" id="sidebar" aria-label="Seitenleiste">
+    <a href="#uebersicht" class="brand">
+      <img src="./assets/mark.svg" width="39" height="39" alt="">
+      <span class="brand-name">Modelwerk<small>LOCAL AI STUDIO</small></span>
+    </a>
+    <button class="icon-button sidebar-close" type="button" aria-label="Navigation schließen" data-action="menu-close"><span data-icon="x"></span></button>
+    <nav class="side-nav" aria-label="Hauptnavigation">
+      <p class="nav-caption">Arbeitsbereich</p>
+      <a class="nav-link" href="#uebersicht" data-page="uebersicht" aria-current="page"><span data-icon="layout"></span>Übersicht</a>
+      <a class="nav-link" href="#chat" data-page="chat"><span data-icon="message"></span>Chat</a>
+      <a class="nav-link" href="#modelle" data-page="modelle"><span data-icon="layers"></span>Meine Modelle</a>
+      <a class="nav-link" href="#bibliothek" data-page="bibliothek"><span data-icon="library"></span>Modell-Bibliothek</a>
+      <p class="nav-caption nav-caption-separated">System</p>
+      <a class="nav-link" href="#verbindung" data-page="verbindung"><span data-icon="plug"></span>Verbindung</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <a href="#verbindung" class="runtime-card">
+        <span class="runtime-icon" data-icon="cpu"></span>
+        <span class="runtime-label"><strong>Lokale Laufzeit</strong><span id="sidebar-status" class="runtime-status"><i class="status-dot"></i>Nicht verbunden</span></span>
+        <span class="runtime-chevron" data-icon="chevronRight"></span>
+      </a>
+      <div class="rail-footer">
+        <a href="https://github.com/Joshua49561/Test" target="_blank" rel="noreferrer"><span data-icon="github"></span> GitHub <span class="github-arrow" data-icon="arrowUpRight"></span></a>
+        <span class="version">v1.0</span>
+      </div>
+    </div>
+  </aside>
+
+  <div class="workspace">
+    <header class="topbar">
+      <div class="header-left">
+        <button class="icon-button menu-button" type="button" data-action="menu" aria-label="Navigation öffnen" aria-controls="sidebar" aria-expanded="false"><span data-icon="menu"></span></button>
+        <div class="breadcrumbs" aria-label="Aktuelle Ansicht">
+          <span class="breadcrumb-root"><span data-icon="panel"></span> Arbeitsbereich</span>
+          <span class="breadcrumb-divider" data-icon="chevronRight"></span>
+          <span id="breadcrumb-current">Übersicht</span>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button type="button" class="quick-search" data-action="palette" aria-keyshortcuts="Control+K Meta+K"><span data-icon="search"></span><span class="quick-search-label">Suchen …</span><kbd id="quick-key" aria-hidden="true">Ctrl K</kbd></button>
+        <span class="privacy-badge" title="Modell-Anfragen laufen nur über deine lokale Laufzeit."><span data-icon="shield"></span><span>Lokal &amp; privat</span></span>
+      </div>
+    </header>
+    <main id="app" class="content" tabindex="-1"></main>
+    <footer class="workspace-footer">
+      <span><span data-icon="lock"></span> Dein Rechner. Deine Daten.</span>
+      <a href="https://github.com/Joshua49561/Test" target="_blank" rel="noreferrer">Quellcode <span data-icon="arrowUpRight"></span></a>
+    </footer>
+    <noscript><p class="noscript">Bitte aktiviere JavaScript, um Modelwerk zu öffnen.</p></noscript>
+  </div>
+  <dialog class="modal" id="modal" aria-labelledby="modal-title"></dialog>
+  <dialog class="palette" id="palette" aria-label="Schnellsuche"></dialog>
+  <div class="toast-area" id="toast-area" role="status" aria-live="polite" aria-atomic="false"></div>
+</body>
+</html>

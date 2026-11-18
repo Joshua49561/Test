@@ -1,0 +1,14 @@
+{
+  "name": "modelwerk",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Deutschsprachige Oberfläche für lokale KI-Modelle",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "start": "node server.mjs",
+    "open": "node server.mjs --open",
+    "preview": "node server.mjs --preview",
+    "test": "node --test"
+  }
+}
